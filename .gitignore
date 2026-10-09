@@ -1,0 +1,35 @@
+# Build output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+nbproject/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+application-local.properties
+application-local.yml
+*.pem
+*.key
+
+# Misc
+Notes.md
