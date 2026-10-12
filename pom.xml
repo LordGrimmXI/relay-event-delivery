@@ -35,6 +35,12 @@
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- PostgreSQL JDBC driver (needed only at runtime) -->
         <dependency>
             <groupId>org.postgresql</groupId>
