@@ -41,6 +41,12 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Request validation (@NotBlank, @Size, ...) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
         <!-- PostgreSQL JDBC driver (needed only at runtime) -->
         <dependency>
             <groupId>org.postgresql</groupId>

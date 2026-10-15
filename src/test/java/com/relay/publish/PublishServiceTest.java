@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -57,13 +56,13 @@ class PublishServiceTest {
         subscriptions.insert(idOfA, eventType);
         subscriptions.insert(idOfB, eventType);
         
-        Optional<Long> result = publishService.publish(eventType, idempotencyKey, "{\"a\":1}");
-
+        PublishResult result = publishService.publish(eventType, idempotencyKey, "{\"a\":1}");
+        
         // A new event was created (not treated as a duplicate)
-        assertThat(result).isPresent();
+        assertThat(result.status()).isEqualTo(PublishResult.Status.CREATED);
 
         // Exactly one delivery per subscribed active destination
-        long eventId = result.get();
+        long eventId = result.eventId();
         Integer deliveryCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM deliveries WHERE event_id = ?", Integer.class, eventId);
     
@@ -88,5 +87,56 @@ class PublishServiceTest {
 
         // The event insert happened first, so if rollback works, it must be gone.
         assertThat(countEventsByKey(key)).isEqualTo(0);
+    }
+
+    @Test
+    void publish_samePayloadTwice_returnsSameEventId() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String eventType = "dup.same." + suffix;
+        String key = "dup-same-" + suffix;
+
+        PublishResult first = publishService.publish(eventType, key, "{\"a\":1}");
+        PublishResult second = publishService.publish(eventType, key, "{\"a\":1}");
+
+        assertThat(first.status()).isEqualTo(PublishResult.Status.CREATED);
+        assertThat(second.status()).isEqualTo(PublishResult.Status.DUPLICATE_SAME_PAYLOAD);
+        assertThat(second.eventId()).isEqualTo(first.eventId());
+    }
+
+    @Test
+    void publish_samePayloadWithDifferentSpacingAndKeyOrder_isStillSame() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String eventType = "dup.format." + suffix;
+        String key = "dup-format-" + suffix;
+
+        publishService.publish(eventType, key, "{\"a\":1,\"b\":2}");
+        PublishResult second = publishService.publish(eventType, key, "{\"b\": 2, \"a\": 1}");
+
+        assertThat(second.status()).isEqualTo(PublishResult.Status.DUPLICATE_SAME_PAYLOAD);
+    }
+
+    @Test
+    void publish_differentPayloadSameKey_isConflict() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String eventType = "dup.diff." + suffix;
+        String key = "dup-diff-" + suffix;
+
+        PublishResult first = publishService.publish(eventType, key, "{\"a\":1}");
+        PublishResult second = publishService.publish(eventType, key, "{\"a\":2}");
+
+        assertThat(second.status()).isEqualTo(PublishResult.Status.DUPLICATE_DIFFERENT_PAYLOAD);
+        assertThat(second.eventId()).isEqualTo(first.eventId());
+    }
+
+    @Test
+    void publish_oneVersusOnePointZero_isTreatedAsDifferent() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String eventType = "dup.number." + suffix;
+        String key = "dup-number-" + suffix;
+
+        publishService.publish(eventType, key, "{\"a\":1}");
+        PublishResult second = publishService.publish(eventType, key, "{\"a\":1.0}");
+
+        assertThat(second.status()).isEqualTo(PublishResult.Status.DUPLICATE_DIFFERENT_PAYLOAD);
     }
 }
