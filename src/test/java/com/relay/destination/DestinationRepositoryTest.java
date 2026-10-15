@@ -22,6 +22,7 @@ class DestinationRepositoryTest {
     @Autowired
     JdbcTemplate jdbc;
 
+    @SuppressWarnings("null")
     @Test
     void findActiveByEventType_returnsOnlyActiveSubscribedDestinations() {
         // Unique names and event type so leftover rows from other runs can't interfere
