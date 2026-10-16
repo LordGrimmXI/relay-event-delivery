@@ -10,6 +10,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.relay.destination.DestinationAlreadyExistsException;
+import com.relay.destination.DestinationNotFoundException;
+import com.relay.destination.DuplicateSubscriptionException;
+import com.relay.destination.InvalidDestinationUrlException;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -45,5 +50,29 @@ public class GlobalExceptionHandler {
         log.error("Unexpected error", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("Internal server error", List.of()));
+    }
+
+    @ExceptionHandler(InvalidDestinationUrlException.class)
+    public ResponseEntity<ApiError> handleInvalidDestinationUrl(InvalidDestinationUrlException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiError(ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(DestinationAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleDuplicateDestination(DestinationAlreadyExistsException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError(ex.getMessage(), List.of()));
+    }
+    
+    @ExceptionHandler(DestinationNotFoundException.class)
+    public ResponseEntity<ApiError> handleDestinationNotFound(DestinationNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ApiError(ex.getMessage(), List.of()));
+    }
+
+    @ExceptionHandler(DuplicateSubscriptionException.class)
+    public ResponseEntity<ApiError> handleDuplicateSubscription(DuplicateSubscriptionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ApiError(ex.getMessage(), List.of()));
     }
 }

@@ -31,7 +31,7 @@ class EventControllerTest {
                 .thenThrow(new RuntimeException("secret database detail"));
 
         mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
                         .content(VALID_BODY))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.message").value("Internal server error"));
@@ -44,7 +44,7 @@ class EventControllerTest {
                 .thenReturn(new PublishResult(PublishResult.Status.CREATED, 42L));
 
         mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
                         .content(VALID_BODY))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.eventId").value(42));
@@ -56,7 +56,7 @@ class EventControllerTest {
                 .thenReturn(new PublishResult(PublishResult.Status.DUPLICATE_SAME_PAYLOAD, 42L));
 
         mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
                         .content(VALID_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.eventId").value(42));
@@ -68,7 +68,7 @@ class EventControllerTest {
                 .thenReturn(new PublishResult(PublishResult.Status.DUPLICATE_DIFFERENT_PAYLOAD, 42L));
 
         mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
                         .content(VALID_BODY))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Idempotency key already used with a different payload"));
@@ -77,7 +77,7 @@ class EventControllerTest {
     @Test
     void emptyBody_returns400WithValidationDetails() throws Exception {
         mockMvc.perform(post("/events")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Validation failed"))

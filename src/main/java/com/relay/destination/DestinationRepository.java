@@ -2,6 +2,7 @@ package com.relay.destination;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -43,5 +44,51 @@ public class DestinationRepository {
                 ),
                 eventType
         );
+    }
+
+    public Optional<Destination> findById(Long id) {
+        String sql = """
+                SELECT id, name, url, is_active, created_at
+                FROM destinations
+                WHERE id = ?
+                """;
+
+        List<Destination> results = jdbc.query(
+                sql,
+                (rs, rowNum) -> new Destination(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("url"),
+                        rs.getBoolean("is_active"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()
+                ),
+                id
+        );
+
+        return results.stream().findFirst();
+    }
+
+    
+    public boolean existsById(Long id) {
+        Integer count = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM destinations WHERE id = ?",
+            Integer.class,
+            id
+        );
+
+        return count != null && count > 0;
+    }
+    
+    public boolean deactivate(Long id) {
+        int rowsUpdated = jdbc.update(
+            """
+            UPDATE destinations
+            SET is_active = FALSE
+            WHERE id = ? AND is_active = TRUE
+            """,
+            id
+        );
+
+        return rowsUpdated == 1;
     }
 }
