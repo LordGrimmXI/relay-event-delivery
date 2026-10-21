@@ -92,4 +92,32 @@ class DestinationUrlValidatorTest {
         assertThat(validator.isAllowed(
                 "http://example.com:99999/webhook")).isFalse();
     }
+
+    @Test
+    void rejectsTrailingDotLocalHostnames() {
+        assertThat(validator.isAllowed(
+                "http://localhost./hook")).isFalse();
+
+        assertThat(validator.isAllowed(
+                "http://printer.local./hook")).isFalse();
+    }
+
+    @Test
+    void rejectsReservedIpv4Ranges() {
+        assertThat(validator.isAllowed("http://0.1.2.3/")).isFalse();
+        assertThat(validator.isAllowed("http://100.64.0.1/")).isFalse();
+        assertThat(validator.isAllowed("http://198.18.0.1/")).isFalse();
+        assertThat(validator.isAllowed("http://240.0.0.1/")).isFalse();
+    }
+
+    @Test
+    void rejectsNonStandardIpv4Notation() {
+        assertThat(validator.isAllowed("http://0x7f.0.0.1/")).isFalse();
+        assertThat(validator.isAllowed("http://2130706433/")).isFalse();
+    }
+
+    @Test
+    void rejectsIpv4MappedIpv6Loopback() {
+        assertThat(validator.isAllowed("http://[::ffff:127.0.0.1]/")).isFalse();
+    }
 }

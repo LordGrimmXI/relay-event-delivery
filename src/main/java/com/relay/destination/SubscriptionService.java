@@ -7,23 +7,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SubscriptionService {
 
-    private final DestinationRepository destinationRepository;
-    private final SubscriptionRepository subscriptionRepository;
+    private final DestinationRepository destinations;
+    private final SubscriptionRepository subscriptions;
 
-    public SubscriptionService(DestinationRepository destinationRepository,
-                               SubscriptionRepository subscriptionRepository) {
-        this.destinationRepository = destinationRepository;
-        this.subscriptionRepository = subscriptionRepository;
+    public SubscriptionService(DestinationRepository destinations,
+                               SubscriptionRepository subscriptions) {
+        this.destinations = destinations;
+        this.subscriptions = subscriptions;
     }
 
     @Transactional
-    public void subscribe(Long destinationId, String eventType) {
-        if (!destinationRepository.existsById(destinationId)) {
+    public void subscribe(long destinationId, String eventType) {
+        if (!destinations.existsById(destinationId)) {
             throw new DestinationNotFoundException();
         }
 
         try {
-            subscriptionRepository.insert(destinationId, eventType);
+            subscriptions.insert(destinationId, eventType);
         } catch (DuplicateKeyException ex) {
             throw new DuplicateSubscriptionException();
         }

@@ -67,12 +67,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DestinationNotFoundException.class)
     public ResponseEntity<ApiError> handleDestinationNotFound(DestinationNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(new ApiError(ex.getMessage(), List.of()));
+                .body(new ApiError(ex.getMessage(), List.of()));
     }
 
     @ExceptionHandler(DuplicateSubscriptionException.class)
     public ResponseEntity<ApiError> handleDuplicateSubscription(DuplicateSubscriptionException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ApiError(ex.getMessage(), List.of()));
+                .body(new ApiError(ex.getMessage(), List.of()));
     }
 }

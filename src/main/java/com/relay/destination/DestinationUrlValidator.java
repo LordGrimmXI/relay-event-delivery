@@ -1,11 +1,13 @@
 package com.relay.destination;
 
+import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
@@ -18,6 +20,8 @@ public class DestinationUrlValidator {
             "metadata.google.internal",
             "metadata.google"
     );
+
+    private static final Pattern IPV4_LITERAL = Pattern.compile("[0-9.]+");
 
     public boolean isAllowed(String rawUrl) {
         if (rawUrl == null || rawUrl.isBlank()) {
@@ -35,7 +39,11 @@ public class DestinationUrlValidator {
             }
 
             scheme = scheme.toLowerCase(Locale.ROOT);
-            host = host.toLowerCase(Locale.ROOT);
+            host = normalizeHost(host);
+
+            if (host.isEmpty()) {
+                return false;
+            }
 
             if (!scheme.equals("http") && !scheme.equals("https")) {
                 return false;
@@ -70,10 +78,21 @@ public class DestinationUrlValidator {
         }
     }
 
+    private String normalizeHost(String host) {
+        String normalized = host.toLowerCase(Locale.ROOT);
+
+        // "localhost." and "localhost" are the same host.
+        while (normalized.endsWith(".")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        return normalized;
+    }
+
     private boolean isIpLiteral(String host) {
         // IPv6 literals contain colons.
         // IPv4 literals contain only digits and dots.
-        return host.contains(":") || host.matches("[0-9.]+");
+        return host.contains(":") || IPV4_LITERAL.matcher(host).matches();
     }
 
     private boolean isProhibitedIp(String host) {
@@ -85,12 +104,28 @@ public class DestinationUrlValidator {
                     || address.isLinkLocalAddress()
                     || address.isSiteLocalAddress()
                     || address.isMulticastAddress()
+                    || isReservedIpv4(address)
                     || isIPv6UniqueLocalAddress(address);
 
         } catch (Exception ex) {
             // If a literal IP cannot be parsed, reject it.
             return true;
         }
+    }
+
+    private boolean isReservedIpv4(InetAddress address) {
+        if (!(address instanceof Inet4Address)) {
+            return false;
+        }
+
+        byte[] bytes = address.getAddress();
+        int first = bytes[0] & 0xFF;
+        int second = bytes[1] & 0xFF;
+
+        return first == 0                                      // 0.0.0.0/8
+                || (first == 100 && second >= 64 && second <= 127)  // 100.64.0.0/10 (carrier-grade NAT)
+                || (first == 198 && (second == 18 || second == 19)) // 198.18.0.0/15 (benchmarking)
+                || first >= 240;                               // 240.0.0.0/4 (reserved, incl. broadcast)
     }
 
     private boolean isIPv6UniqueLocalAddress(InetAddress address) {

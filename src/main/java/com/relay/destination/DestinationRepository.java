@@ -5,10 +5,19 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class DestinationRepository {
+    private static final RowMapper<Destination> DESTINATION_MAPPER = (rs, rowNum) -> new Destination(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("url"),
+            rs.getBoolean("is_active"),
+            rs.getObject("created_at", OffsetDateTime.class).toInstant()
+    );
+
     private final JdbcTemplate jdbc;
 
     public DestinationRepository(JdbcTemplate jdbc) {
@@ -33,62 +42,32 @@ public class DestinationRepository {
                 WHERE s.event_type = ? AND d.is_active = TRUE
                 """;
 
-        return jdbc.query(
-                sql,
-                (rs, rowNum) -> new Destination(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        rs.getString("url"),
-                        rs.getBoolean("is_active"),
-                        rs.getObject("created_at", OffsetDateTime.class).toInstant()
-                ),
-                eventType
-        );
+        return jdbc.query(sql, DESTINATION_MAPPER, eventType);
     }
 
-    public Optional<Destination> findById(Long id) {
+    public Optional<Destination> findById(long id) {
         String sql = """
                 SELECT id, name, url, is_active, created_at
                 FROM destinations
                 WHERE id = ?
                 """;
 
-        List<Destination> results = jdbc.query(
-                sql,
-                (rs, rowNum) -> new Destination(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        rs.getString("url"),
-                        rs.getBoolean("is_active"),
-                        rs.getObject("created_at", OffsetDateTime.class).toInstant()
-                ),
-                id
-        );
-
-        return results.stream().findFirst();
+        return jdbc.query(sql, DESTINATION_MAPPER, id).stream().findFirst();
     }
 
-    
-    public boolean existsById(Long id) {
-        Integer count = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM destinations WHERE id = ?",
-            Integer.class,
-            id
-        );
+    public boolean existsById(long id) {
+        String sql = "SELECT EXISTS (SELECT 1 FROM destinations WHERE id = ?)";
 
-        return count != null && count > 0;
+        return Boolean.TRUE.equals(jdbc.queryForObject(sql, Boolean.class, id));
     }
-    
-    public boolean deactivate(Long id) {
-        int rowsUpdated = jdbc.update(
-            """
-            UPDATE destinations
-            SET is_active = FALSE
-            WHERE id = ? AND is_active = TRUE
-            """,
-            id
-        );
 
-        return rowsUpdated == 1;
+    public boolean deactivate(long id) {
+        String sql = """
+                UPDATE destinations
+                SET is_active = FALSE
+                WHERE id = ?
+                """;
+
+        return jdbc.update(sql, id) == 1;
     }
 }

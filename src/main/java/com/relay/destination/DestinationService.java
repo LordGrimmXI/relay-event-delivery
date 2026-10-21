@@ -7,12 +7,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DestinationService {
 
-    private final DestinationRepository destinationRepository;
+    private final DestinationRepository destinations;
     private final DestinationUrlValidator urlValidator;
 
-    public DestinationService(DestinationRepository destinationRepository,
+    public DestinationService(DestinationRepository destinations,
                               DestinationUrlValidator urlValidator) {
-        this.destinationRepository = destinationRepository;
+        this.destinations = destinations;
         this.urlValidator = urlValidator;
     }
 
@@ -22,24 +22,19 @@ public class DestinationService {
             throw new InvalidDestinationUrlException();
         }
 
+        long id;
         try {
-            Long id = destinationRepository.insert(name, url);
-
-            return destinationRepository.findById(id)
-                    .orElseThrow(() ->
-                            new IllegalStateException(
-                                    "Inserted destination could not be found"));
-
+            id = destinations.insert(name, url);
         } catch (DuplicateKeyException ex) {
             throw new DestinationAlreadyExistsException();
         }
-    }
-    
-    @Transactional
-    public void deactivate(Long id) {
-        boolean deactivated = destinationRepository.deactivate(id);
 
-        if (!deactivated) {
+        return destinations.findById(id)
+                .orElseThrow(() -> new IllegalStateException("Inserted destination could not be found"));
+    }
+
+    public void deactivate(long id) {
+        if (!destinations.deactivate(id)) {
             throw new DestinationNotFoundException();
         }
     }
