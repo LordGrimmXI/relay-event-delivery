@@ -33,6 +33,11 @@ public class DestinationService {
                 .orElseThrow(() -> new IllegalStateException("Inserted destination could not be found"));
     }
 
+    public Destination get(long id) {
+        return destinations.findById(id)
+                .orElseThrow(DestinationNotFoundException::new);
+    }
+
     public void deactivate(long id) {
         if (!destinations.deactivate(id)) {
             throw new DestinationNotFoundException();

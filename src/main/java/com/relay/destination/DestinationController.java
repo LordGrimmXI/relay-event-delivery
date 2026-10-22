@@ -3,6 +3,7 @@ package com.relay.destination;
 import java.net.URI;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,6 +29,11 @@ public class DestinationController {
 
         return ResponseEntity.created(URI.create("/destinations/" + destination.id()))
                 .body(destination);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Destination> get(@PathVariable long id) {
+        return ResponseEntity.ok(destinationService.get(id));
     }
 
     @PostMapping("/{id}/deactivate")

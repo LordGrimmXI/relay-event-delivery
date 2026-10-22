@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import java.time.Instant;
 
@@ -94,6 +95,27 @@ class DestinationControllerTest {
                 .when(destinationService).deactivate(anyLong());
 
         mockMvc.perform(post("/destinations/999/deactivate"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Destination not found"));
+    }
+
+    @Test
+    void get_returns200WithDestination() throws Exception {
+        when(destinationService.get(7L))
+                .thenReturn(new Destination(7L, "orders", "https://example.com/hook", true, Instant.now()));
+
+        mockMvc.perform(get("/destinations/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.isActive").value(true));
+    }
+
+    @Test
+    void get_unknownId_returns404() throws Exception {
+        when(destinationService.get(999L))
+                .thenThrow(new DestinationNotFoundException());
+
+        mockMvc.perform(get("/destinations/999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Destination not found"));
     }
