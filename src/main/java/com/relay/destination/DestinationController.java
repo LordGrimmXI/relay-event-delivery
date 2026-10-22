@@ -21,6 +21,7 @@ public class DestinationController {
         this.destinationService = destinationService;
     }
 
+    @SuppressWarnings("null")
     @PostMapping
     public ResponseEntity<Destination> create(@Valid @RequestBody CreateDestinationRequest request) {
         Destination destination = destinationService.create(request.name(), request.url());

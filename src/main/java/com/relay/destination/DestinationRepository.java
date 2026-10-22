@@ -34,6 +34,7 @@ public class DestinationRepository {
         return jdbc.queryForObject(sql, Long.class, name, url);
     }
 
+    @SuppressWarnings("null")
     public List<Destination> findActiveByEventType(String eventType) {
         String sql = """
                 SELECT d.id, d.name, d.url, d.is_active, d.created_at
@@ -45,6 +46,7 @@ public class DestinationRepository {
         return jdbc.query(sql, DESTINATION_MAPPER, eventType);
     }
 
+    @SuppressWarnings("null")
     public Optional<Destination> findById(long id) {
         String sql = """
                 SELECT id, name, url, is_active, created_at

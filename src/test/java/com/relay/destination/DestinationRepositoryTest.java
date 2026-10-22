@@ -49,4 +49,39 @@ class DestinationRepositoryTest {
         List<Long> ids = result.stream().map(Destination::id).toList();
         assertThat(ids).containsExactly(idOfA);
     }
+
+    @Test
+    void findById_returnsInsertedDestination() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        long id = destinations.insert("find-" + suffix, "https://example.com/find");
+
+        assertThat(destinations.findById(id)).isPresent();
+        assertThat(destinations.findById(id).get().name()).isEqualTo("find-" + suffix);
+        assertThat(destinations.findById(id).get().isActive()).isTrue();
+    }
+
+    @Test
+    void findById_unknownId_isEmpty() {
+        assertThat(destinations.findById(-1L)).isEmpty();
+    }
+
+    @Test
+    void existsById_trueForKnownFalseForUnknown() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        long id = destinations.insert("exists-" + suffix, "https://example.com/exists");
+
+        assertThat(destinations.existsById(id)).isTrue();
+        assertThat(destinations.existsById(-1L)).isFalse();
+    }
+
+    @Test
+    void deactivate_isIdempotent_andFalseForUnknownId() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        long id = destinations.insert("deact-" + suffix, "https://example.com/deact");
+
+        assertThat(destinations.deactivate(id)).isTrue();
+        assertThat(destinations.deactivate(id)).isTrue();
+        assertThat(destinations.findById(id).get().isActive()).isFalse();
+        assertThat(destinations.deactivate(-1L)).isFalse();
+    }
 }

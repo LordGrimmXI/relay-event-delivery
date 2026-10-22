@@ -1,8 +1,13 @@
 package com.relay.destination;
 
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/destinations/{destinationId}/subscriptions")
@@ -16,7 +21,7 @@ public class SubscriptionController {
 
     @PostMapping
     public ResponseEntity<Void> subscribe(
-            @PathVariable Long destinationId,
+            @PathVariable long destinationId,
             @Valid @RequestBody CreateSubscriptionRequest request) {
 
         subscriptionService.subscribe(destinationId, request.eventType());
