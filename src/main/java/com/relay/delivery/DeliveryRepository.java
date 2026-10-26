@@ -43,4 +43,35 @@ public class DeliveryRepository {
                 eventId
         );
     }
+
+    // Atomically claims up to `limit` due deliveries: marks them RUNNING
+    // with a lease and returns exactly the rows this caller won.
+    public List<ClaimedDelivery> claimDue(int limit, long leaseSeconds) {
+        String sql = """
+                UPDATE deliveries
+                SET status = 'RUNNING',
+                    lease_expires_at = NOW() + (? * INTERVAL '1 second')
+                WHERE id IN (
+                    SELECT id
+                    FROM deliveries
+                    WHERE status = 'PENDING' AND next_attempt_at <= NOW()
+                    ORDER BY next_attempt_at, id
+                    LIMIT ?
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, event_id, destination_id, attempt_count
+                """;
+
+        return jdbc.query(
+                sql,
+                (rs, rowNum) -> new ClaimedDelivery(
+                        rs.getLong("id"),
+                        rs.getLong("event_id"),
+                        rs.getLong("destination_id"),
+                        rs.getInt("attempt_count")
+                ),
+                leaseSeconds,
+                limit
+        );
+    }
 }
