@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,6 +23,13 @@ public class DestinationUrlValidator {
     );
 
     private static final Pattern IPV4_LITERAL = Pattern.compile("[0-9.]+");
+
+    private final boolean allowLoopback;
+
+    public DestinationUrlValidator(
+            @Value("${relay.destinations.allow-loopback:false}") boolean allowLoopback) {
+        this.allowLoopback = allowLoopback;
+    }
 
     public boolean isAllowed(String rawUrl) {
         if (rawUrl == null || rawUrl.isBlank()) {
@@ -59,16 +67,22 @@ public class DestinationUrlValidator {
                 return false;
             }
 
-            // Reject localhost and local hostnames.
-            if (BLOCKED_HOSTS.contains(host)
-                    || host.endsWith(".localhost")
-                    || host.endsWith(".local")) {
-                return false;
-            }
+            // Dev-only: when enabled, loopback hosts skip the local-host checks below.
+            // Everything else (private ranges, metadata hosts) is still checked.
+            boolean loopbackAllowed = allowLoopback && isLoopbackHost(host);
 
-            // Check IP literals without resolving ordinary DNS names.
-            if (isIpLiteral(host) && isProhibitedIp(host)) {
-                return false;
+            if (!loopbackAllowed) {
+                // Reject localhost and local hostnames.
+                if (BLOCKED_HOSTS.contains(host)
+                        || host.endsWith(".localhost")
+                        || host.endsWith(".local")) {
+                    return false;
+                }
+
+                // Check IP literals without resolving ordinary DNS names.
+                if (isIpLiteral(host) && isProhibitedIp(host)) {
+                    return false;
+                }
             }
 
             return true;
@@ -87,6 +101,19 @@ public class DestinationUrlValidator {
         }
 
         return normalized;
+    }
+
+    private boolean isLoopbackHost(String host) {
+        return host.equals("localhost") || (isIpLiteral(host) && isLoopbackIp(host));
+    }
+
+    private boolean isLoopbackIp(String host) {
+        try {
+            return InetAddress.getByName(host).isLoopbackAddress();
+        } catch (Exception ex) {
+            // An unparseable literal is not loopback; the normal checks will reject it.
+            return false;
+        }
     }
 
     private boolean isIpLiteral(String host) {

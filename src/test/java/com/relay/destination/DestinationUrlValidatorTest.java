@@ -1,4 +1,3 @@
-
 package com.relay.destination;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -9,10 +8,12 @@ import org.junit.jupiter.api.Test;
 class DestinationUrlValidatorTest {
 
     private DestinationUrlValidator validator;
+    private DestinationUrlValidator loopbackValidator;
 
     @BeforeEach
     void setUp() {
-        validator = new DestinationUrlValidator();
+        validator = new DestinationUrlValidator(false);
+        loopbackValidator = new DestinationUrlValidator(true);
     }
 
     @Test
@@ -119,5 +120,28 @@ class DestinationUrlValidatorTest {
     @Test
     void rejectsIpv4MappedIpv6Loopback() {
         assertThat(validator.isAllowed("http://[::ffff:127.0.0.1]/")).isFalse();
+    }
+
+    @Test
+    void loopbackIsAllowedWhenSettingIsOn() {
+        assertThat(loopbackValidator.isAllowed("http://localhost:9000/hook")).isTrue();
+        assertThat(loopbackValidator.isAllowed("http://localhost./hook")).isTrue();
+        assertThat(loopbackValidator.isAllowed("http://127.0.0.1:9000/hook")).isTrue();
+        assertThat(loopbackValidator.isAllowed("http://[::1]:9000/hook")).isTrue();
+    }
+
+    @Test
+    void settingOnStillRejectsEverythingThatIsNotLoopback() {
+        assertThat(loopbackValidator.isAllowed("http://10.0.0.5/hook")).isFalse(); // Private range
+        assertThat(loopbackValidator.isAllowed("http://169.254.169.254/")).isFalse(); // Cloud metadata address
+        assertThat(loopbackValidator.isAllowed("http://metadata.google.internal/")).isFalse(); // Metadata hostname
+        assertThat(loopbackValidator.isAllowed("http://service.localhost/hook")).isFalse(); // Only plain "localhost" is allowed
+    }
+
+    @Test
+    void settingOnStillAppliesTheNormalRules() {
+        assertThat(loopbackValidator.isAllowed("ftp://localhost/file")).isFalse();
+        assertThat(loopbackValidator.isAllowed("http://user:pw@localhost/hook")).isFalse();
+        assertThat(loopbackValidator.isAllowed("https://example.com/webhook")).isTrue();
     }
 }
