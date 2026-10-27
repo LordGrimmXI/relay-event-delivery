@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.relay.network.AddressPolicy;
+
 class DestinationUrlValidatorTest {
 
     private DestinationUrlValidator validator;
@@ -12,8 +14,8 @@ class DestinationUrlValidatorTest {
 
     @BeforeEach
     void setUp() {
-        validator = new DestinationUrlValidator(false);
-        loopbackValidator = new DestinationUrlValidator(true);
+        validator = new DestinationUrlValidator(new AddressPolicy(false));
+        loopbackValidator = new DestinationUrlValidator(new AddressPolicy(true));
     }
 
     @Test
