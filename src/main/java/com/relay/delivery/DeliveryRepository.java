@@ -2,6 +2,7 @@ package com.relay.delivery;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -88,13 +89,76 @@ public class DeliveryRepository {
                 SET status = 'PERMANENTLY_FAILED',
                     last_error = 'destination deactivated'
                 WHERE status = 'PENDING'
-                    AND EXISTS (
-                        SELECT 1
-                        FROM destinations d
-                        WHERE d.id = deliveries.destination_id AND NOT d.is_active
-                    )
+                  AND EXISTS (
+                      SELECT 1
+                      FROM destinations d
+                      WHERE d.id = deliveries.destination_id AND NOT d.is_active
+                  )
                 """;
 
         return jdbc.update(sql);
+    }
+
+    // What the worker needs to send one delivery: the destination URL and the stored payload.
+    public Optional<DeliveryTarget> findTarget(long deliveryId) {
+        String sql = """
+                SELECT d.url, e.payload::text AS payload
+                FROM deliveries del
+                JOIN events e ON e.id = del.event_id
+                JOIN destinations d ON d.id = del.destination_id
+                WHERE del.id = ?
+                """;
+
+        return jdbc.query(
+                sql,
+                (rs, rowNum) -> new DeliveryTarget(
+                        rs.getString("url"),
+                        rs.getString("payload")
+                ),
+                deliveryId
+        ).stream().findFirst();
+    }
+
+    // The three finishing updates only touch a row that is still RUNNING.
+    // They return false if the row was no longer RUNNING (nothing changed).
+
+    public boolean markDelivered(long deliveryId) {
+        String sql = """
+                UPDATE deliveries
+                SET status = 'DELIVERED',
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = NULL,
+                    last_error = NULL
+                WHERE id = ? AND status = 'RUNNING'
+                """;
+
+        return jdbc.update(sql, deliveryId) == 1;
+    }
+
+    public boolean markPermanentlyFailed(long deliveryId, String error) {
+        String sql = """
+                UPDATE deliveries
+                SET status = 'PERMANENTLY_FAILED',
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = NULL,
+                    last_error = ?
+                WHERE id = ? AND status = 'RUNNING'
+                """;
+
+        return jdbc.update(sql, error, deliveryId) == 1;
+    }
+
+    public boolean markForRetry(long deliveryId, String error, long delaySeconds) {
+        String sql = """
+                UPDATE deliveries
+                SET status = 'PENDING',
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = NULL,
+                    last_error = ?,
+                    next_attempt_at = NOW() + (? * INTERVAL '1 second')
+                WHERE id = ? AND status = 'RUNNING'
+                """;
+
+        return jdbc.update(sql, error, delaySeconds, deliveryId) == 1;
     }
 }
