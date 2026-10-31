@@ -17,15 +17,14 @@ public class DeliveryWorker {
     private static final int MAX_PER_RUN = 20;
     private static final long LEASE_SECONDS = 30;
 
-    // Placeholder: next session replaces this with exponential backoff and a retry limit.
-    private static final long RETRY_DELAY_SECONDS = 60;
-
     private final DeliveryRepository deliveries;
     private final WebhookClient webhookClient;
+    private final RetryPolicy retryPolicy;
 
-    public DeliveryWorker(DeliveryRepository deliveries, WebhookClient webhookClient) {
+    public DeliveryWorker(DeliveryRepository deliveries, WebhookClient webhookClient, RetryPolicy retryPolicy) {
         this.deliveries = deliveries;
         this.webhookClient = webhookClient;
+        this.retryPolicy = retryPolicy;
     }
 
     // Returns how many deliveries this pass sent.
@@ -71,8 +70,7 @@ public class DeliveryWorker {
         // Switch expression with no default: a new Kind is a compile error.
         boolean changed = switch (outcome.kind()) {
             case SUCCESS -> deliveries.markDelivered(delivery.id());
-            case RETRYABLE_FAILURE ->
-                    deliveries.markForRetry(delivery.id(), outcome.error(), RETRY_DELAY_SECONDS);
+            case RETRYABLE_FAILURE -> retryOrGiveUp(delivery, outcome);
             case PERMANENT_FAILURE ->
                     deliveries.markPermanentlyFailed(delivery.id(), outcome.error());
         };
@@ -80,5 +78,18 @@ public class DeliveryWorker {
         if (!changed) {
             log.warn("Delivery {} was no longer RUNNING; result discarded", delivery.id());
         }
+    }
+
+    private boolean retryOrGiveUp(ClaimedDelivery delivery, DeliveryOutcome outcome) {
+        // The claimed row carries the count from before this attempt.
+        int attemptsMade = delivery.attemptCount() + 1;
+
+        if (retryPolicy.isExhausted(attemptsMade)) {
+            return deliveries.markPermanentlyFailed(
+                    delivery.id(), "retry limit reached: " + outcome.error());
+        }
+
+        return deliveries.markForRetry(
+                delivery.id(), outcome.error(), retryPolicy.delaySeconds(attemptsMade));
     }
 }

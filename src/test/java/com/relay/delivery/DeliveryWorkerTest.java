@@ -49,7 +49,8 @@ public class DeliveryWorkerTest {
 
         WebhookClient client = new WebhookClient(
                 new AddressPolicy(true), Duration.ofSeconds(2), Duration.ofSeconds(2));
-        worker = new DeliveryWorker(deliveries, client);
+        RetryPolicy retryPolicy = new RetryPolicy(8, () -> 1.0);
+        worker = new DeliveryWorker(deliveries, client, retryPolicy);
     }
 
     @AfterEach
@@ -81,7 +82,7 @@ public class DeliveryWorkerTest {
         assertThat(findStatus(id)).isEqualTo("PENDING");
         assertThat(findAttemptCount(id)).isEqualTo(1);
         assertThat(findLastError(id)).isEqualTo("HTTP 500");
-        assertThat(isDueInTheFuture(id)).isTrue();
+        assertThat(isDueInAboutThirtySeconds(id)).isTrue();
     }
 
     @Test
@@ -117,12 +118,45 @@ public class DeliveryWorkerTest {
         assertThat(hits.get()).isZero();
     }
 
+    @Test
+    public void failureOnTheLastAllowedAttemptGivesUp() {
+        respondWith("/boom", 500);
+        long id = createDelivery(baseUrl + "/boom", true);
+        setAttemptCount(id, 7);
+
+        worker.runOnce();
+
+        assertThat(hits.get()).isEqualTo(1);
+        assertThat(findStatus(id)).isEqualTo("PERMANENTLY_FAILED");
+        assertThat(findAttemptCount(id)).isEqualTo(8);
+        assertThat(findLastError(id)).isEqualTo("retry limit reached: HTTP 500");
+    }
+
+    @Test
+    public void failureOneBeforeTheLimitStillRetries() {
+        respondWith("/boom", 500);
+        long id = createDelivery(baseUrl + "/boom", true);
+        setAttemptCount(id, 6);
+
+        worker.runOnce();
+
+        assertThat(findStatus(id)).isEqualTo("PENDING");
+        assertThat(findAttemptCount(id)).isEqualTo(7);
+        assertThat(findLastError(id)).isEqualTo("HTTP 500");
+    }
+
     private void respondWith(String path, int status) {
         server.createContext(path, exchange -> {
             hits.incrementAndGet();
             exchange.sendResponseHeaders(status, -1);
             exchange.close();
         });
+    }
+
+    private void setAttemptCount(long id, int count) {
+        String sql = "UPDATE deliveries SET attempt_count = ? WHERE id = ?";
+
+        jdbc.update(sql, count, id);
     }
 
     private String findStatus(long id) {
@@ -143,8 +177,13 @@ public class DeliveryWorkerTest {
         return jdbc.queryForObject(sql, Integer.class, id);
     }
 
-    private Boolean isDueInTheFuture(long id) {
-        String sql = "SELECT next_attempt_at > NOW() FROM deliveries WHERE id = ?";
+    private Boolean isDueInAboutThirtySeconds(long id) {
+        String sql = """
+                SELECT next_attempt_at > NOW() + INTERVAL '20 seconds'
+                   AND next_attempt_at <= NOW() + INTERVAL '31 seconds'
+                FROM deliveries
+                WHERE id = ?
+                """;
 
         return jdbc.queryForObject(sql, Boolean.class, id);
     }
