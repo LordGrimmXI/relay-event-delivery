@@ -1,5 +1,6 @@
 package com.relay.delivery;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -9,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 
 // One pass of the worker: sweep, then claim-send-record one delivery at a time.
 // Deliberately NOT @Transactional: the HTTP call must not hold a database
-// connection or row locks.
+// connection or row locks. The recorder opens its own short transaction.
 @Slf4j
 @Component
 public class DeliveryWorker {
@@ -19,12 +20,13 @@ public class DeliveryWorker {
 
     private final DeliveryRepository deliveries;
     private final WebhookClient webhookClient;
-    private final RetryPolicy retryPolicy;
+    private final DeliveryRecorder recorder;
 
-    public DeliveryWorker(DeliveryRepository deliveries, WebhookClient webhookClient, RetryPolicy retryPolicy) {
+    public DeliveryWorker(
+            DeliveryRepository deliveries, WebhookClient webhookClient, DeliveryRecorder recorder) {
         this.deliveries = deliveries;
         this.webhookClient = webhookClient;
-        this.retryPolicy = retryPolicy;
+        this.recorder = recorder;
     }
 
     // Returns how many deliveries this pass sent.
@@ -59,37 +61,22 @@ public class DeliveryWorker {
 
     private void sendAndRecord(ClaimedDelivery delivery) {
         Optional<DeliveryTarget> target = deliveries.findTarget(delivery.id());
-        if (target.isEmpty()) {
-            deliveries.markPermanentlyFailed(delivery.id(), "delivery data missing");
-            return;
-        }
 
-        DeliveryOutcome outcome = webhookClient.send(
-                target.get().url(), delivery.eventId(), target.get().payload());
+        // The attempt starts here, right before the send.
+        Instant startedAt = Instant.now();
+        long startNanos = System.nanoTime();
 
-        // Switch expression with no default: a new Kind is a compile error.
-        boolean changed = switch (outcome.kind()) {
-            case SUCCESS -> deliveries.markDelivered(delivery.id());
-            case RETRYABLE_FAILURE -> retryOrGiveUp(delivery, outcome);
-            case PERMANENT_FAILURE ->
-                    deliveries.markPermanentlyFailed(delivery.id(), outcome.error());
-        };
+        DeliveryOutcome outcome = target.isPresent()
+                ? webhookClient.send(
+                        target.get().url(), delivery.eventId(), target.get().payload())
+                : DeliveryOutcome.permanent("delivery data missing");
+
+        int durationMs = (int) ((System.nanoTime() - startNanos) / 1_000_000);
+
+        boolean changed = recorder.record(delivery, outcome, startedAt, durationMs);
 
         if (!changed) {
             log.warn("Delivery {} was no longer RUNNING; result discarded", delivery.id());
         }
-    }
-
-    private boolean retryOrGiveUp(ClaimedDelivery delivery, DeliveryOutcome outcome) {
-        // The claimed row carries the count from before this attempt.
-        int attemptsMade = delivery.attemptCount() + 1;
-
-        if (retryPolicy.isExhausted(attemptsMade)) {
-            return deliveries.markPermanentlyFailed(
-                    delivery.id(), "retry limit reached: " + outcome.error());
-        }
-
-        return deliveries.markForRetry(
-                delivery.id(), outcome.error(), retryPolicy.delaySeconds(attemptsMade));
     }
 }

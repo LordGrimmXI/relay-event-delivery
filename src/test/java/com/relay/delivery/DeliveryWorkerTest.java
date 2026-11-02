@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -28,6 +29,9 @@ public class DeliveryWorkerTest {
     @Autowired
     private DeliveryRepository deliveries;
 
+    @Autowired
+    private AttemptRepository attempts;
+
     private DeliveryWorker worker;
     private HttpServer server;
     private String baseUrl;
@@ -50,7 +54,8 @@ public class DeliveryWorkerTest {
         WebhookClient client = new WebhookClient(
                 new AddressPolicy(true), Duration.ofSeconds(2), Duration.ofSeconds(2));
         RetryPolicy retryPolicy = new RetryPolicy(8, () -> 1.0);
-        worker = new DeliveryWorker(deliveries, client, retryPolicy);
+        DeliveryRecorder recorder = new DeliveryRecorder(deliveries, attempts, retryPolicy);
+        worker = new DeliveryWorker(deliveries, client, recorder);
     }
 
     @AfterEach
@@ -145,6 +150,21 @@ public class DeliveryWorkerTest {
         assertThat(findLastError(id)).isEqualTo("HTTP 500");
     }
 
+    @Test
+    public void everySendWritesOneAttemptRow() {
+        respondWith("/boom", 500);
+        long id = createDelivery(baseUrl + "/boom", true);
+
+        worker.runOnce();
+
+        Map<String, Object> attempt = findOnlyAttempt(id);
+        assertThat(attempt.get("attempt_number")).isEqualTo(1);
+        assertThat(attempt.get("outcome")).isEqualTo("FAILURE");
+        assertThat(attempt.get("http_status")).isEqualTo(500);
+        assertThat(attempt.get("error_message")).isEqualTo("HTTP 500");
+        assertThat((Integer) attempt.get("duration_ms")).isGreaterThanOrEqualTo(0);
+    }
+
     private void respondWith(String path, int status) {
         server.createContext(path, exchange -> {
             hits.incrementAndGet();
@@ -186,6 +206,17 @@ public class DeliveryWorkerTest {
                 """;
 
         return jdbc.queryForObject(sql, Boolean.class, id);
+    }
+
+    // queryForMap fails unless there is exactly one row, which is what we want here.
+    private Map<String, Object> findOnlyAttempt(long id) {
+        String sql = """
+                SELECT attempt_number, outcome, http_status, error_message, duration_ms
+                FROM delivery_attempts
+                WHERE delivery_id = ?
+                """;
+
+        return jdbc.queryForMap(sql, id);
     }
 
     @SuppressWarnings("null")
