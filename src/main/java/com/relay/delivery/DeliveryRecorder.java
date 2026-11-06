@@ -21,7 +21,8 @@ public class DeliveryRecorder {
         this.retryPolicy = retryPolicy;
     }
 
-    // Returns false (and writes nothing) if the row was no longer RUNNING.
+    // Returns false (and writes nothing) if the row is no longer RUNNING, or if
+    // someone else has claimed it since (its attempt count changed).
     @Transactional
     public boolean record(
             ClaimedDelivery delivery, DeliveryOutcome outcome, Instant startedAt, int durationMs) {
@@ -30,10 +31,10 @@ public class DeliveryRecorder {
 
         // Switch expression with no default: a new Kind is a compile error.
         boolean changed = switch (outcome.kind()) {
-            case SUCCESS -> deliveries.markDelivered(delivery.id());
+            case SUCCESS -> deliveries.markDelivered(delivery.id(), delivery.attemptCount());
             case RETRYABLE_FAILURE -> retryOrGiveUp(delivery, attemptNumber, outcome);
-            case PERMANENT_FAILURE ->
-                    deliveries.markPermanentlyFailed(delivery.id(), outcome.error());
+            case PERMANENT_FAILURE -> deliveries.markPermanentlyFailed(
+                    delivery.id(), delivery.attemptCount(), outcome.error());
         };
 
         if (changed) {
@@ -47,10 +48,12 @@ public class DeliveryRecorder {
             ClaimedDelivery delivery, int attemptNumber, DeliveryOutcome outcome) {
         if (retryPolicy.isExhausted(attemptNumber)) {
             return deliveries.markPermanentlyFailed(
-                    delivery.id(), "retry limit reached: " + outcome.error());
+                    delivery.id(), delivery.attemptCount(),
+                    "retry limit reached: " + outcome.error());
         }
 
         return deliveries.markForRetry(
-                delivery.id(), outcome.error(), retryPolicy.delaySeconds(attemptNumber));
+                delivery.id(), delivery.attemptCount(), outcome.error(),
+                retryPolicy.delaySeconds(attemptNumber));
     }
 }

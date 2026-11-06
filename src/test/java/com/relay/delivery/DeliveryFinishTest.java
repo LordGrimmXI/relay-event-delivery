@@ -34,7 +34,7 @@ public class DeliveryFinishTest {
         long id = createPendingDelivery();
         deliveries.claimDue(10, 30);
 
-        boolean changed = deliveries.markDelivered(id);
+        boolean changed = deliveries.markDelivered(id, 0);
 
         assertThat(changed).isTrue();
         assertThat(queryString("status", id)).isEqualTo("DELIVERED");
@@ -47,7 +47,7 @@ public class DeliveryFinishTest {
         long id = createPendingDelivery();
         deliveries.claimDue(10, 30);
 
-        boolean changed = deliveries.markForRetry(id, "HTTP 500", 60);
+        boolean changed = deliveries.markForRetry(id, 0, "HTTP 500", 60);
 
         assertThat(changed).isTrue();
         assertThat(queryString("status", id)).isEqualTo("PENDING");
@@ -60,10 +60,23 @@ public class DeliveryFinishTest {
     public void finishingARowThatIsNotRunningChangesNothing() {
         long id = createPendingDelivery();
 
-        boolean changed = deliveries.markDelivered(id);
+        boolean changed = deliveries.markDelivered(id, 0);
 
         assertThat(changed).isFalse();
         assertThat(queryString("status", id)).isEqualTo("PENDING");
+    }
+
+    @Test
+    public void finishingWithAStaleAttemptCountChangesNothing() {
+        long id = createPendingDelivery();
+        deliveries.claimDue(10, 30);
+
+        // The row's real count is 0. We claim to have seen 5, so we are "stale".
+        boolean changed = deliveries.markPermanentlyFailed(id, 5, "HTTP 404");
+
+        assertThat(changed).isFalse();
+        assertThat(queryString("status", id)).isEqualTo("RUNNING");
+        assertThat(queryInt("attempt_count", id)).isEqualTo(0);
     }
 
     private String queryString(String column, long id) {

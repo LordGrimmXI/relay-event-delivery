@@ -119,36 +119,39 @@ public class DeliveryRepository {
         ).stream().findFirst();
     }
 
-    // The three finishing updates only touch a row that is still RUNNING.
-    // They return false if the row was no longer RUNNING (nothing changed).
+    // The three finishing updates only touch a row that is still RUNNING AND
+    // still has the attempt count the worker saw when it claimed the row.
+    // If the row was recovered and claimed by someone else, the count differs
+    // and nothing changes. They return false if nothing changed.
 
-    public boolean markDelivered(long deliveryId) {
+    public boolean markDelivered(long deliveryId, int expectedAttemptCount) {
         String sql = """
                 UPDATE deliveries
                 SET status = 'DELIVERED',
                     attempt_count = attempt_count + 1,
                     lease_expires_at = NULL,
                     last_error = NULL
-                WHERE id = ? AND status = 'RUNNING'
+                WHERE id = ? AND status = 'RUNNING' AND attempt_count = ?
                 """;
 
-        return jdbc.update(sql, deliveryId) == 1;
+        return jdbc.update(sql, deliveryId, expectedAttemptCount) == 1;
     }
 
-    public boolean markPermanentlyFailed(long deliveryId, String error) {
+    public boolean markPermanentlyFailed(long deliveryId, int expectedAttemptCount, String error) {
         String sql = """
                 UPDATE deliveries
                 SET status = 'PERMANENTLY_FAILED',
                     attempt_count = attempt_count + 1,
                     lease_expires_at = NULL,
                     last_error = ?
-                WHERE id = ? AND status = 'RUNNING'
+                WHERE id = ? AND status = 'RUNNING' AND attempt_count = ?
                 """;
 
-        return jdbc.update(sql, error, deliveryId) == 1;
+        return jdbc.update(sql, error, deliveryId, expectedAttemptCount) == 1;
     }
 
-    public boolean markForRetry(long deliveryId, String error, long delaySeconds) {
+    public boolean markForRetry(
+            long deliveryId, int expectedAttemptCount, String error, long delaySeconds) {
         String sql = """
                 UPDATE deliveries
                 SET status = 'PENDING',
@@ -156,9 +159,9 @@ public class DeliveryRepository {
                     lease_expires_at = NULL,
                     last_error = ?,
                     next_attempt_at = NOW() + (? * INTERVAL '1 second')
-                WHERE id = ? AND status = 'RUNNING'
+                WHERE id = ? AND status = 'RUNNING' AND attempt_count = ?
                 """;
 
-        return jdbc.update(sql, error, delaySeconds, deliveryId) == 1;
+        return jdbc.update(sql, error, delaySeconds, deliveryId, expectedAttemptCount) == 1;
     }
 }

@@ -1,5 +1,6 @@
 package com.relay.delivery;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -11,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-public class StaleWorkerOverwriteDemoTest {
+public class StaleWorkerGuardTest {
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -30,11 +31,12 @@ public class StaleWorkerOverwriteDemoTest {
     }
 
     @Test
-    public void aStaleWorkersLateResultCanOverwriteTheNewOwner() {
+    public void aStaleWorkersLateResultIsRejectedAndTheCurrentOwnerStillWins() {
         long id = createPendingDelivery();
 
-        // Worker A claims the row, then stalls.
-        deliveries.claimDue(10, 30);
+        // Worker A claims the row (it sees attempt count 0), then stalls.
+        ClaimedDelivery claimedByA = claim(id);
+        assertThat(claimedByA.attemptCount()).isZero();
 
         // The lease expires and recovery puts the row back (simulated with SQL,
         // because the real recovery statement does not exist yet).
@@ -47,17 +49,28 @@ public class StaleWorkerOverwriteDemoTest {
                 """;
         jdbc.update(recoverSql, id);
 
-        // Worker B claims the same row. B is now the legitimate owner.
-        deliveries.claimDue(10, 30);
+        // Worker B claims the same row (it sees attempt count 1).
+        ClaimedDelivery claimedByB = claim(id);
+        assertThat(claimedByB.attemptCount()).isEqualTo(1);
+
+        // Worker A wakes up and reports its old result: rejected.
+        boolean staleChanged = deliveries.markDelivered(id, claimedByA.attemptCount());
+        assertThat(staleChanged).isFalse();
         assertThat(findStatus(id)).isEqualTo("RUNNING");
 
-        // Worker A wakes up and reports its old result.
-        boolean changed = deliveries.markDelivered(id);
-
-        // Documents the BUG: the guard only checks status, so A's stale result
-        // is accepted and B's row is finished by the wrong worker.
-        assertThat(changed).isTrue();
+        // Worker B reports its result: accepted.
+        boolean ownerChanged = deliveries.markDelivered(id, claimedByB.attemptCount());
+        assertThat(ownerChanged).isTrue();
         assertThat(findStatus(id)).isEqualTo("DELIVERED");
+    }
+
+    private ClaimedDelivery claim(long id) {
+        List<ClaimedDelivery> claimed = deliveries.claimDue(10, 30);
+
+        return claimed.stream()
+                .filter(c -> c.id() == id)
+                .findFirst()
+                .orElseThrow();
     }
 
     private String findStatus(long id) {
@@ -72,7 +85,7 @@ public class StaleWorkerOverwriteDemoTest {
 
         String eventSql = """
                 INSERT INTO events (event_type, idempotency_key, payload)
-                VALUES ('stale.demo', ?, '{}'::jsonb)
+                VALUES ('stale.guard', ?, '{}'::jsonb)
                 RETURNING id
                 """;
         Long eventId = jdbc.queryForObject(eventSql, Long.class, "stale-" + suffix);
