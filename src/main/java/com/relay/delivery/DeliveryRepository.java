@@ -99,6 +99,31 @@ public class DeliveryRepository {
         return jdbc.update(sql);
     }
 
+    // Finds RUNNING rows whose lease has expired (we lost track of the send) and
+    // puts them back. The recovery counts as an attempt, so the attempt count
+    // changes and a stale worker's late result is rejected by the guard below.
+    // At the retry limit the row is finished instead, so a crash loop ends.
+    // Returns how many rows were recovered.
+    public int recoverExpiredLeases(int maxAttempts) {
+        String sql = """
+                UPDATE deliveries
+                SET status = CASE
+                        WHEN attempt_count + 1 >= ? THEN 'PERMANENTLY_FAILED'
+                        ELSE 'PENDING'
+                    END,
+                    last_error = CASE
+                        WHEN attempt_count + 1 >= ? THEN 'retry limit reached: lease expired'
+                        ELSE 'lease expired'
+                    END,
+                    attempt_count = attempt_count + 1,
+                    lease_expires_at = NULL,
+                    next_attempt_at = NOW()
+                WHERE status = 'RUNNING' AND lease_expires_at < NOW()
+                """;
+
+        return jdbc.update(sql, maxAttempts, maxAttempts);
+    }
+
     // What the worker needs to send one delivery: the destination URL and the stored payload.
     public Optional<DeliveryTarget> findTarget(long deliveryId) {
         String sql = """
