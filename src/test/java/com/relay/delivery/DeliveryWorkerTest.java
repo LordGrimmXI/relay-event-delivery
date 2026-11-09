@@ -39,10 +39,11 @@ public class DeliveryWorkerTest {
 
     @BeforeEach
     public void setUp() throws IOException {
+        // RUNNING rows are parked too: leftover leases would be recovered and sent.
         String sql = """
                 UPDATE deliveries
                 SET status = 'PERMANENTLY_FAILED'
-                WHERE status = 'PENDING'
+                WHERE status IN ('PENDING', 'RUNNING')
                 """;
         jdbc.update(sql);
 
@@ -55,7 +56,7 @@ public class DeliveryWorkerTest {
                 new AddressPolicy(true), Duration.ofSeconds(2), Duration.ofSeconds(2));
         RetryPolicy retryPolicy = new RetryPolicy(8, () -> 1.0);
         DeliveryRecorder recorder = new DeliveryRecorder(deliveries, attempts, retryPolicy);
-        worker = new DeliveryWorker(deliveries, client, recorder);
+        worker = new DeliveryWorker(deliveries, client, recorder, retryPolicy);
     }
 
     @AfterEach
@@ -165,6 +166,42 @@ public class DeliveryWorkerTest {
         assertThat((Integer) attempt.get("duration_ms")).isGreaterThanOrEqualTo(0);
     }
 
+    @Test
+    public void aCrashedRowIsRecoveredAndSent() {
+        respondWith("/ok", 200);
+        long id = createDelivery(baseUrl + "/ok", true);
+        // A worker claimed the row and then "crashed": the lease expires unused.
+        deliveries.claimDue(10, 30);
+        expireLease(id);
+
+        int processed = worker.runOnce();
+
+        assertThat(processed).isEqualTo(1);
+        assertThat(hits.get()).isEqualTo(1);
+        assertThat(findStatus(id)).isEqualTo("DELIVERED");
+        // One attempt for the recovery, one for the send that succeeded.
+        assertThat(findAttemptCount(id)).isEqualTo(2);
+        // The history has a gap: attempt 1 (the crashed one) was never recorded.
+        assertThat(findOnlyAttempt(id).get("attempt_number")).isEqualTo(2);
+    }
+
+    @Test
+    public void aCrashedRowAtTheLimitIsNeverSent() {
+        respondWith("/ok", 200);
+        long id = createDelivery(baseUrl + "/ok", true);
+        setAttemptCount(id, 7);
+        deliveries.claimDue(10, 30);
+        expireLease(id);
+
+        int processed = worker.runOnce();
+
+        assertThat(processed).isEqualTo(0);
+        assertThat(hits.get()).isEqualTo(0);
+        assertThat(findStatus(id)).isEqualTo("PERMANENTLY_FAILED");
+        assertThat(findAttemptCount(id)).isEqualTo(8);
+        assertThat(findLastError(id)).isEqualTo("retry limit reached: lease expired");
+    }
+
     private void respondWith(String path, int status) {
         server.createContext(path, exchange -> {
             hits.incrementAndGet();
@@ -177,6 +214,17 @@ public class DeliveryWorkerTest {
         String sql = "UPDATE deliveries SET attempt_count = ? WHERE id = ?";
 
         jdbc.update(sql, count, id);
+    }
+
+    // Simulates time passing: the lease ended a second ago.
+    private void expireLease(long id) {
+        String sql = """
+                UPDATE deliveries
+                SET lease_expires_at = NOW() - INTERVAL '1 second'
+                WHERE id = ?
+                """;
+
+        jdbc.update(sql, id);
     }
 
     private String findStatus(long id) {

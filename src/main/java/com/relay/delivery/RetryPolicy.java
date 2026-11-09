@@ -27,6 +27,10 @@ public class RetryPolicy {
         this.random = random;
     }
 
+    public int maxAttempts() {
+        return maxAttempts;
+    }
+
     public boolean isExhausted(int attemptsMade) {
         return attemptsMade >= maxAttempts;
     }
