@@ -8,9 +8,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.relay.support.PostgresTestConfig;
+
 @SpringBootTest
+@Import(PostgresTestConfig.class)
 class EventRepositoryTest {
 
     @Autowired
@@ -57,5 +61,11 @@ class EventRepositoryTest {
         assertThat(event.idempotencyKey()).isEqualTo(key);
         assertThat(event.payload()).contains("orderId");
         assertThat(event.createdAt()).isNotNull();
+    }
+
+    @Test
+    void databaseIsFreshAndMigrated() {
+        Integer rowCount = jdbc.queryForObject("SELECT count(*) FROM events", Integer.class);
+        assertThat(rowCount).isLessThanOrEqualTo(10);
     }
 }
