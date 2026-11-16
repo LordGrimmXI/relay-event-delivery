@@ -8,9 +8,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.relay.support.PostgresTestConfig;
+
 @SpringBootTest
+@Import(PostgresTestConfig.class)
 class DestinationRepositoryTest {
 
     @Autowired
@@ -83,5 +87,12 @@ class DestinationRepositoryTest {
         assertThat(destinations.deactivate(id)).isTrue();
         assertThat(destinations.findById(id).get().isActive()).isFalse();
         assertThat(destinations.deactivate(-1L)).isFalse();
+    }
+
+    @Test
+    void findActiveByEventType_unknownEventType_isEmpty() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        List<Destination> result = destinations.findActiveByEventType("unknown-" + suffix);
+        assertThat(result).isEmpty();
     }
 }
