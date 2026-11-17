@@ -2,6 +2,7 @@ package com.relay.delivery;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -13,11 +14,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import com.relay.support.PostgresTestConfig;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@Import(PostgresTestConfig.class)
 public class DeliveryClaimTest {
 
     @Autowired
@@ -76,10 +81,11 @@ public class DeliveryClaimTest {
                 FROM deliveries
                 WHERE id = ?
                 """;
-        jdbc.query(sql, rs -> {
-            assertThat(rs.getString("status")).isEqualTo("RUNNING");
-            assertThat(rs.getBoolean("lease_in_future")).isTrue();
-        }, id);
+        // queryForMap throws if the row is missing, so this cannot pass with zero rows
+        Map<String, Object> row = jdbc.queryForMap(sql, id);
+
+        assertThat(row.get("status")).isEqualTo("RUNNING");
+        assertThat(row.get("lease_in_future")).isEqualTo(true);
     }
 
     @Test
@@ -91,6 +97,21 @@ public class DeliveryClaimTest {
 
         assertThat(first).hasSize(1);
         assertThat(second).isEmpty();
+    }
+
+    @SuppressWarnings("null")
+    @Test
+    public void dueRowsAreClaimedButFutureRowsAreNot() {
+        long dueId = createPendingDelivery();
+        long futureId = createPendingDelivery();
+
+        jdbc.update(
+                "UPDATE deliveries SET next_attempt_at = NOW() + INTERVAL '1 hour' WHERE id = ?",
+                futureId);
+
+        List<ClaimedDelivery> claimed = deliveries.claimDue(10, 30);
+
+        assertThat(claimed).extracting(ClaimedDelivery::id).containsExactly(dueId);
     }
 
     private List<ClaimedDelivery> claimAfterBarrier(CyclicBarrier barrier) throws Exception {
