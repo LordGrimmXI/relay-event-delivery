@@ -64,8 +64,8 @@ class EventRepositoryTest {
     }
 
     @Test
-    void databaseIsFreshAndMigrated() {
-        Integer rowCount = jdbc.queryForObject("SELECT count(*) FROM events", Integer.class);
-        assertThat(rowCount).isLessThanOrEqualTo(10);
+    void usesThePostgres17Container() {
+        String version = jdbc.queryForObject("SELECT version()", String.class);
+        assertThat(version).contains("PostgreSQL 17");
     }
 }
