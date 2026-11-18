@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.relay.delivery.AttemptRepository;
@@ -19,8 +20,10 @@ import com.relay.destination.DestinationRepository;
 import com.relay.destination.SubscriptionRepository;
 import com.relay.publish.PublishResult;
 import com.relay.publish.PublishService;
+import com.relay.support.PostgresTestConfig;
 
 @SpringBootTest
+@Import(PostgresTestConfig.class)
 class EventStatusServiceTest {
 
     @Autowired

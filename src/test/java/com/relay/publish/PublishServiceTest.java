@@ -10,14 +10,17 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import com.relay.delivery.DeliveryRepository;
 import com.relay.destination.DestinationRepository;
 import com.relay.destination.SubscriptionRepository;
+import com.relay.support.PostgresTestConfig;
 
 @SpringBootTest
+@Import(PostgresTestConfig.class)
 class PublishServiceTest {
 
     @Autowired
